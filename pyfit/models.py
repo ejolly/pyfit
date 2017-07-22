@@ -182,7 +182,7 @@ class CompModel(object):
             self.fitted = True
 
 
-    def group_fit(self,group_name=None,verbose=False,**kwargs):
+    def fit_group(self,group_name=None,verbose=False,**kwargs):
         """
         Fit a model to each member of 'group_name'.
 
@@ -197,7 +197,7 @@ class CompModel(object):
         assert group_name is not None, "Grouping variable not set!"
         assert group_name in self.data.columns, "Grouping variable not found in data!"
 
-        out = pd.DataFrame(columns=['Group']+ self.params_to_fit.keys()+['chi-square','reduced_chi-square','AIC','BIC','corr_r','corr_p','MSE'])
+        out = pd.DataFrame(columns=[self.group_var]+ self.params_to_fit.keys()+['chi-square','reduced_chi-square','AIC','BIC','corr_r','corr_p','MSE'])
 
         print("Fitting model to %s groups..." % self.data[group_name].nunique())
 
@@ -218,17 +218,17 @@ class CompModel(object):
 
             out_dat = dict(group_model.fitted_params)
             out_dat['chi-square'] = group_model.best_fit.chisqr
-            out_dat['reduce_chi-square'] = group_model.best_fit.redchi
+            out_dat['reduced_chi-square'] = group_model.best_fit.redchi
             out_dat['AIC'] = group_model.best_fit.aic
             out_dat['BIC'] = group_model.best_fit.bic
             out_dat['corr_r'] = group_model.corr['r']
-            out_dat['corr_r'] = group_model.corr['p']
+            out_dat['corr_p'] = group_model.corr['p']
             out_dat['MSE'] = group_model.corr['p']
-            out_dat['Group'] = group
+            out_dat[self.group_var] = group
             out = out.append(out_dat,ignore_index=True)
             del group_model
-        self.Fitted = True
-        self.group_fit = out
+        self.fitted = True
+        self.group_fits = out
 
     def summary(self):
         """
@@ -237,16 +237,41 @@ class CompModel(object):
 
         assert self.fitted, "Model has not been fit yet!"
 
-        if self.algorithm == 'least_squares':
-            diag_string = '\n[[Diagnostics]] \n    Algorithm: %s (TRF) \n    Loss: %s \n    Success: %s' % (self.best_fit.method, self.loss, self.best_fit.success)
+        if self.group_var:
+
+            #Compute average fit stats
+            summary = self.group_fit.drop(self.group_var,axis=1).agg({'mean','std'})
+
+            if self.algorithm == 'least_squares':
+                print(
+                """[[Group Mean Summary]]\n
+                Num groups = %s\n
+                Algorithm  = %s (TRF)\n
+                Loss       = %s\n
+                """
+                % (self.data[self.group_var].nunique(),self.algorithm,self.loss))
+            else:
+                print(
+                """[[Group Mean Summary]]\n
+                    Num groups          = %s\n
+                    Algorithm           = %s\n
+                    Loss                = %s\n
+                """
+                % (self.data[self.group_var].nunique(),self.algorithm,self.loss))
+
+            #Display summary
+            return summary
 
         else:
-            diag_string = '\n[[Diagnostics]] \n    Method: %s \n    Success: %s' % (self.best_fit.method, self.best_fit.success)
+            if self.algorithm == 'least_squares':
+                diag_string = '\n[[Diagnostics]] \n    Algorithm: %s (TRF) \n    Loss: %s \n    Success: %s' % (self.best_fit.method, self.loss, self.best_fit.success)
 
-        print(
-        fit_report(self.best_fit) + diag_string
+            else:
+                diag_string = '\n[[Diagnostics]] \n    Algorithm: %s \n    Loss: %s \n    Success: %s' % (self.best_fit.method, self.loss, self.best_fit.success)
+            print(
+            fit_report(self.best_fit) + diag_string
 
-        )
+            )
 
     def _make_params(self,search_space):
         """
@@ -257,7 +282,7 @@ class CompModel(object):
         params = Parameters()
         for k,v in self.params_to_fit.iteritems():
             if len(v) == 1:
-                if len(search_space == 1):
+                if len(search_space) == 1:
                     val = np.random.uniform(v[0]-search_space[0],v[0]+search_space[0])
                 else:
                     val = np.random.uniform(v[0]-search_space[0],v[0]+search_space[1])
