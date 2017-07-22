@@ -73,7 +73,7 @@ nelder.summary()
 
 While picking the "right" algorithm depends on the problem you're trying to solve and the properties of your objective function, the following are fairly robust for a large class of problems and a reasonable first bet, and none of them require you to compute the gradient ahead of time or even know what it is (though that can help). A great comprehensive overview of the scope of these issues is [here](http://www.scipy-lectures.org/advanced/mathematical_optimization/).
 
-A reasonable optimizer-to-try trajectory would be:
+A reasonable optimizer-to-try trajectory would be:  
 **Unbounded and Unconstrained**: `lm -> nelder`  
 **Bounded and Unconstrained**: `least_squares -> lbfgsb`  
 **Bounded and Constrained**: `slsqp or cobyla`  
@@ -83,7 +83,7 @@ A reasonable optimizer-to-try trajectory would be:
 - Good for well-conditioned, high-dimensional problems, and noisy measurements Nelder-Mead (`method = 'nelder'`) as it doesn't require having or computing function gradients, just the function evaluations themselves
     - *Cannot handle bounds or constraints*
 
-#### L-BGFS
+#### L-BFGS-B
 - Limited memory version of the BFGS algorithm (`method = lbfgsb`) which is a gradient (derivative) based method that's flexible enough to handle a large class of problems, at the cost of potentially being slower or slightly less accurate than simplex methods on well conditioned problems
     - *Can handle bounds*
     - *Computing gradients ahead of time can improve*
