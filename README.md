@@ -1,4 +1,4 @@
-# fitpy
+# pyfit
 
 Computational model fitting toolbox in python.
 
