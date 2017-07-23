@@ -1,71 +1,114 @@
 # pyfit
 
-Computational model fitting toolbox in python.
+Computational model fitting in python.  
+
+This toolbox is designed to be a *high-level* pythonic alternative to something like Matlab's fmincon or fminunc, which require minimal user input and generally solve a large class of problems well. Plus it plays nice with other tools in the scientific python ecosystem (e.g. pandas  )
 
 #### [Description](#about)  
+#### [Defining an objective function](#def-obj)  
 #### [Example Usage](#example-usage)  
 #### [Optimizer Reference](#opt-ref)  
 
 ## Description <a name="about"></a>  
-This toolbox is designed to be a *high-level* pythonic alternative to something like Matlab's fmincon or fminunc, which require minimal user input and generally solve a large class of problems well. Additionally it has some convenience features like fitting multiple identical models in quick succession (e.g. modeling each participant in an experiment), plotting, and predicting new data with a previously fit model.
+At it's core this toolbox requires a user to have some data to model, and an objective function to try to fit to the data via optimization routines built into scipy.  
 
 This toolbox uses some of the core functionality of the great [lmfit](https://github.com/lmfit/lmfit-py) package which itself wraps [scipy.optimize](https://docs.scipy.org/doc/scipy/reference/tutorial/optimize.html.). While access to highly customizable optimization is mostly possible by passing in the relevant scipy optimizer arguments and settings, it might be more beneficial to use either of those two packages if complete customization is what you're after.
 
+## Defining an objective function <a name="def-obj"></a>  
+The underlying routines expect that an objective function adheres to a particular type of definition structure. This requires 4 key pieces:  
+1. The first argument should be a dictionary object with named parameters to estimate
+2. The second argument should be a pandas dataframe that contains the columns of predictor and outcome variables to use during modeling
+3. Any additional arguments used by the objective function
+4. The function *must* return residuals (predictions - outcome var)  
+
+Here is the simplest example:  
+```
+def sample_obj(params_to_estimate, df, fixed_var):
+    '''
+    Fit a model where:
+    Y = (X*A + Z)**2./Z
+
+    X: independent variable
+    A: free parameterize to estimate
+    Z: fixed parameter
+    '''
+
+    #Unpack free parameter based on its name
+    A = params_to_estimate['param_1']
+
+    #Model
+    prediction = (df['predictor_var'] * A + fixed_var)**2./fixed_var
+
+    #Return residual
+    return prediction - df['outcome_var']
+```
+
 ## Example usage <a name="example-usage"></a>
+
+**Simple single constrained optimization**  
+
+Now that an objective function is defined we can setup our model optimizer object. Here's the simplest example which will do least-squares optimization by default, searching within the specified bounds [0,5] and randomly initializing the search multiple times.
+
+
 ```
 from pyfit.models import CompModel
 
-#Define an exponential model that we'll use as our objective function to minimize
-#Our model always expects this objective function to return an array of residual values
-
-def demand_curve(params_to_estimate, X, Y, endowment_range=1.25):
-
-    "Demand curve objective function. Takes X vector as input, has 2 free parameters we're trying to solve for, and 1 additional fixed parameter.""
-
-    ### PARAMETERS TO ESTIMATE ###
-    Q0 = params_to_estimate['Q0']
-    alpha = params_to_estimate['alpha']
-
-    ### FIXED PARAMETERS/INPUTS ###
-    C = X
-    k = endowment_range
-
-    ### MODEL ###
-    predicted_y = np.log( Q0 ) + k * (np.exp( -1 * alpha * Q0 * C) - 1)
-    residuals = predicted_y - Y
-
-    return residuals
-
-#Setup our optimizer object
-from pyfit.models import CompModel
-
-#Try it with the trf least squares algorithm and a l1 loss first
-
 lstsq = CompModel(
-    demand_curve,X,Y,algorithm='least_squares',
-    loss='soft_l1',
-    params_to_fit = {'Q0':[0,5],'alpha':[.1]},
-    extra_args = {'endowment_range':1.25})
+    func = sample_obj,
+    data = df,
+    Y_var = 'outcome_var',
+    params_to_fit = {'param_1':[0,5]},
+    extra_args = {'fixed_var':1.25})
 
-#For the 'Q0' parameter our optimizer is going to constrain its search to the interval [0,5], randomly initializing within that range multiple times. For the 'alpha' parameter, our optimizer is not going to constrain its search, but will randomly initializing within a range of values centered on our initial search value [0.1]
-
+#Fit it
 lstsq.fit()
 
-#Get output
-
+#Print summary
 lstsq.summary()
+```
 
-#Now lets try it using Nelder-Mead which is an unconstrained optimizer
+**Group unconstrained optimization**  
 
+Lets try a different optimizer without bounds. We can also fit multiple models simultaneously if we have a grouping indicator in our dataframe. In this example let's fit a model to each participant in an experiment. Because we haven't specified bounds, the optimizer will instead run many random initializations in a uniform symmetric window around the initial value of our parameter.  
+
+```
 nelder = CompModel(
-    demand_curve,X,Y,algorithm='nelder',
-    params_to_fit = {'Q0':[.1],'alpha':[.1]},
-    extra_args = {'endowment_range':1.25})
+    func = sample_obj,
+    data = df,
+    Y_var = 'outcome_var',
+    group_var = 'Subject',
+    algorithm='nelder',
+    params_to_fit = {'param_1':[2]},
+    extra_args = {'fixed_var':1.25})
 
-#Though we're not providing bounds for constrained search, let's constrain the window size for random initialize to (init_val - .1) - (init_val + 10); this window does not have to be symmetrical about the initial value
+#Fit it
+nelder.fit()
 
-nelder.fit(search_space= [.1,10])
+#Print group summary, averaging over fit statistics and parameter values
 nelder.summary()
+```
+
+**Multi-parameter mixed optimization**  
+
+Here we're going to fit a model with an objective function that has two free parameters 'Q0' and 'alpha', and do constrained optimization for only one of them. For the 'Q0' parameter our optimizer is going to constrain its search to the interval [0,5], randomly initializing within that range multiple times. For the 'alpha' parameter, our optimizer is not going to constrain its search, but will randomly initializing within a range of values centered on our initial search value [0.1]
+
+```
+#Using L-BFGS-B optimizer which can handle bounds
+
+model = CompModel(
+    func = two_param_obj,
+    data = df,
+    Y_var = 'outcome_var',
+    algorithm='lbfgsb',
+    params_to_fit = {'Q0':[0,5],'alpha':[.1]})
+
+#We can even control the size and shape of the uniform sampling window around our 'alpha' parameter. Let's define the window size as (init_val - .1) - (init_val + 10); this window does not have to be symmetrical about the initial value
+
+#Fit with specified search window
+model.fit(search_space= [.1,10])
+
+#Print summary
+model.summary()
 ```
 
 ## Optimizer Reference <a name="opt-ref"></a>
