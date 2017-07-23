@@ -6,7 +6,7 @@ This toolbox is designed to be a *high-level* pythonic alternative to something 
 
 #### [Description](#about)  
 #### [Defining an objective function](#def-obj)  
-#### [Example Usage](#example-usage)  
+#### [Usage](#example-usage)  
 #### [Optimizer Reference](#opt-ref)  
 
 ## Description <a name="about"></a>  
@@ -43,7 +43,15 @@ def sample_obj(params_to_estimate, df, fixed_var):
     return prediction - df['outcome_var']
 ```
 
-## Example usage <a name="example-usage"></a>
+## Usage <a name="example-usage"></a>
+
+**Creating parameters**  
+
+To keep things simple, parameters to be estimated should passed in as python dictionaries, in which keys = name of parameter, values = list of 1 initial value, or list of 2 bounds.
+
+If value is a single list item, the parameter will be subject to *unconstrained* optimization. A uniform sampling window centered around that value will be used for random initialization during each optimizer run. If value is a list with 2 items, the parameter will be subject to *constrained* optimization, between those two values. A uniform sampling window within those bounds will be used for random initialization during each optimizer run.
+
+For example the following will be treated as two parameters one to be minimized with bounds, and one to be minimized without: `my_parameters = {'alpha':[-1,1],'beta':[0.5]}`
 
 **Simple single constrained optimization**  
 
@@ -120,7 +128,6 @@ A reasonable optimizer-to-try trajectory would be:
 **Unbounded and Unconstrained**: `lm -> nelder`  
 **Bounded and Unconstrained**: `least_squares -> lbfgsb`  
 **Bounded and Constrained**: `slsqp or cobyla`  
-
 
 #### Nelder-Mead
 - Good for well-conditioned, high-dimensional problems, and noisy measurements Nelder-Mead (`method = 'nelder'`) as it doesn't require having or computing function gradients, just the function evaluations themselves
