@@ -2,7 +2,7 @@
 
 Computational model fitting in python.  
 
-This toolbox is designed to be a *high-level* pythonic alternative to something like Matlab's fmincon or fminunc, which require minimal user input and generally solve a large class of problems well. However, it has numerous enhancements and the major difference between this toolbox and existing tools are: tight integration with pandas, multiple random initializations of optimizers, and the ability to simply fit separate models to grouped data (e.g. individual participants in an experiment). 
+This toolbox is designed to be a *high-level* pythonic alternative to something like Matlab's fmincon or fminunc, which require minimal user input and generally solve a large class of problems well. However, it has numerous enhancements and the major difference between this toolbox and existing tools are: tight integration with pandas, multiple random initializations of optimizers, and the ability to simply fit separate models to grouped data (e.g. individual participants in an experiment).
 
 #### [Description](#about)  
 #### [Defining an objective function](#def-obj)  
@@ -144,12 +144,3 @@ A reasonable optimizer-to-try trajectory would be:
 #### Levenberg-Marquardt
 - The optimizer in scipy.optimize.lstsq (`method = 'lm'`), a generally fast and robust algorithm thats a good first go-to for unconstrained, unbounded problems
     - *Cannot handle bounds*
-
-
-### Todo
-- Raise warning if provided algorithm that ignores bounds, or visa versa, because lmfit auto falls back to leastsq or nelder.
-
-- Make search_window flexible to take values separately for each parameter
-- Plotting
-    - Plot generate model curve
-    - Plot correlation between predicted values and real values
