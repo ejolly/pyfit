@@ -2,7 +2,7 @@
 
 Computational model fitting in python.  
 
-This toolbox is designed to be a *high-level* pythonic alternative to something like Matlab's fmincon or fminunc, which require minimal user input and generally solve a large class of problems well. Plus it plays nice with other tools in the scientific python ecosystem (e.g. pandas  )
+This toolbox is designed to be a *high-level* pythonic alternative to something like Matlab's fmincon or fminunc, which require minimal user input and generally solve a large class of problems well. However, it has numerous enhancements and the major difference between this toolbox and existing tools are: tight integration with pandas, multiple random initializations of optimizers, and the ability to simply fit separate models to grouped data (e.g. individual participants in an experiment). 
 
 #### [Description](#about)  
 #### [Defining an objective function](#def-obj)  
