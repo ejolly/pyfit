@@ -171,7 +171,7 @@ class CompModel(object):
         else:
             #Get the best model
             self.best_fit = min(fitted_models, key=attrgetter('chisqr'))
-            self.fitted_params = self.best_fit.params.valuesdict()
+            self.fitted_params = dict(self.best_fit.params.valuesdict())
             self.preds = self.best_fit.residual + self.data[self.Y_var]
             if corr_type == 'pearson':
                 corrs = pearsonr(self.preds,self.data[self.Y_var])
