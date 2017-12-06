@@ -123,7 +123,9 @@ class CompModel(object):
         corr_type = kwargs.pop('corr_type','pearson')
 
         #How far around init unbounded params to grab random inits from
-        search_space = kwargs.pop('search_space',5)
+        search_space = kwargs.pop('search_space',[5])
+        if isinstance(search_space,float) or isinstance(search_space,int):
+            search_space = [search_space]            
 
         #Loop over random initializations
         fitted_models = []
@@ -156,7 +158,7 @@ class CompModel(object):
                     call['loss'] = self.loss
 
             #Fit
-            call.update(kwargs) #additional kwargs
+            #call.update(kwargs) #additional kwargs
             fit = minimize(**call)
 
             if fit.success:
