@@ -23,21 +23,20 @@ The underlying routines expect that an objective function adheres to a particula
 
 Here is the simplest example:  
 ```
-def sample_obj(params_to_estimate, df, fixed_var):
+def sample_obj(params_to_estimate, df):
     '''
     Fit a model where:
     Y = (X*A + Z)**2./Z
 
     X: independent variable
-    A: free parameterize to estimate
-    Z: fixed parameter
+    A: free parameters to estimate
     '''
 
     #Unpack free parameter based on its name
     A = params_to_estimate['param_1']
 
     #Model
-    prediction = (df['predictor_var'] * A + fixed_var)**2./fixed_var
+    prediction = (df['predictor_var'] * A + fixed_var)**2./10
 
     #Return residual
     return prediction - df['outcome_var']
@@ -64,7 +63,7 @@ from pyfit.models import CompModel
 lstsq = CompModel(
     func = sample_obj,
     data = df,
-    Y_var = 'outcome_var',
+    outcome_var = 'outcome_var',
     params_to_fit = {'param_1':[0,5]},
     extra_args = {'fixed_var':1.25})
 
@@ -83,17 +82,20 @@ Lets try a different optimizer without bounds. We can also fit multiple models s
 nelder = CompModel(
     func = sample_obj,
     data = df,
-    Y_var = 'outcome_var',
+    outcome_var = 'outcome_var',
     group_var = 'Subject',
     algorithm='nelder',
     params_to_fit = {'param_1':[2]},
     extra_args = {'fixed_var':1.25})
 
 #Fit it
-nelder.fit()
+nelder.fit_group()
 
 #Print group summary, averaging over fit statistics and parameter values
 nelder.summary()
+
+#Get actual subject Parameters
+nelder.group_fits
 ```
 
 **Multi-parameter mixed optimization**  
@@ -106,7 +108,7 @@ Here we're going to fit a model with an objective function that has two free par
 model = CompModel(
     func = two_param_obj,
     data = df,
-    Y_var = 'outcome_var',
+    outcome_var = 'outcome_var',
     algorithm='lbfgsb',
     params_to_fit = {'Q0':[0,5],'alpha':[.1]})
 
