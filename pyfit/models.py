@@ -29,11 +29,12 @@ class CompModel(object):
     Args:
         func: objective function to minimize
         data: pandas dataframe of all independent and dependent variables
-        Y_var: name of the column in data that refers the dependent variable to be modeled
+        outcome_var: name of the column in data that refers the dependent variable to be modeled
+        params_to_fit: dict of {'param_1':[init_val],'param_2':[init_val]}, OR {'param_1':[lb,ub],'param_2':[lb_ub]}
+        group_var: name of the column in data that refers to a grouping variable to fit separate models to each sub-group within data
         loss: the type of loss to use to minimize the objective function; Default is sse; Must be one of: 'sse' or 'linear', 'll', 'soft_l1', 'huber', 'cauchy', or 'arctan'; default is sse/linear
         algorithm: what optimization algorithm to use; Default is least_squares; Must be one of: 'leastsq','least_squares','differential_evolution','brute','nelder','lbfgsb','powell','cg','newton','cobyla','tnc','trust-ncg','dogleg','slsqp'
-        params_to_fit: dict of {'param_1':[init_val],'param_2':[init_val]}, OR {'param_1':[lb,ub],'param_2':[lb_ub]}
-        nrep: optional, number of random initializations with starting values; default (100)
+        n_starts: optional, number of random initializations with starting values; default (100)
         extra_args: optional additional keword arguments to the objective function
 
 
@@ -41,21 +42,23 @@ class CompModel(object):
     def __init__(
     self,
     func,
-    data = None,
-    Y_var = None,
+    data,
+    outcome_var,
+    params_to_fit,
     group_var = None,
     loss = 'sse',
     algorithm = 'least_squares',
-    params_to_fit = None,
     extra_args = None,
-    nrep = 100):
+    n_starts = 100):
 
-        if data is not None:
-            assert isinstance(data,pd.DataFrame), "Data must be pandas dataframe"
-        if Y_var is not None:
-            assert isinstance(Y_var,str), "Y_var must be a string referring to the column name of the value to predict in data"
-        if func is not None:
-            assert callable(func), 'Objective function must be a callable python function!'
+        assert isinstance(data,pd.DataFrame), "Data must be pandas dataframe"
+
+        assert isinstance(outcome_var,str), "outcome_var must be a string referring to the column name of the value to predict in data"
+
+        assert callable(func), 'Objective function must be a callable python function!'
+
+        if group_var is not None:
+            assert isinstance(group_var,str), "group_var must be a string reffering to a column name of the grouping variable in data"
 
         assert algorithm in ['lm','least_squares','differential_evolution','brute','nelder','lbfgsb','powell','cg','newton','cobyla','tnc','trust-ncg','dogleg','slsqp'], 'Invalid algorithm, see docstring or lmfit/scipy docs for acceptable algorithms'
 
@@ -67,11 +70,11 @@ class CompModel(object):
         self.loss = loss
         self.algorithm = algorithm
         self.data = data
-        self.Y_var = Y_var
+        self.outcome_var = outcome_var
         self.group_var = group_var
         self.params_to_fit = params_to_fit
         self.extra_args = extra_args
-        self.nrep = nrep
+        self.n_starts = n_starts
         self.fitted_params = None
         self.preds = None
         self.MSE = None
@@ -82,12 +85,12 @@ class CompModel(object):
 
         if self.group_var:
 
-            group_shapes = self.data.drop(self.Y_var,axis=1).groupby(self.group_var).apply(lambda x: x.shape).unique()
+            group_shapes = self.data.drop(self.outcome_var,axis=1).groupby(self.group_var).apply(lambda x: x.shape).unique()
 
             return '%s(X=%s, Y=%s, n_groups=%s, loss=%s, num_params=%s, fitted=%s)' % (
             self.__class__.__name__,
             group_shapes,
-            self.Y_var,
+            self.outcome_var,
             self.data[self.group_var].nunique(),
             self.loss,
             len(self.params_to_fit.keys()),
@@ -96,8 +99,8 @@ class CompModel(object):
         else:
             return '%s(X=%s, Y=%s, n_groups=%s, loss=%s, num_params=%s, fitted=%s)' % (
             self.__class__.__name__,
-            self.data.drop(self.Y_var,axis=1).shape,
-            self.Y_var,
+            self.data.drop(self.outcome_var,axis=1).shape,
+            self.outcome_var,
             1,
             self.loss,
             len(self.params_to_fit.keys()),
@@ -125,11 +128,11 @@ class CompModel(object):
         #How far around init unbounded params to grab random inits from
         search_space = kwargs.pop('search_space',[5])
         if isinstance(search_space,float) or isinstance(search_space,int):
-            search_space = [search_space]            
+            search_space = [search_space]
 
         #Loop over random initializations
         fitted_models = []
-        for i in xrange(self.nrep):
+        for i in range(self.n_starts):
 
             #Make parameters
             params = self._make_params(search_space)
@@ -147,7 +150,7 @@ class CompModel(object):
             else:
                 call['method'] = self.algorithm
 
-            call['args'] = (self.data,self.Y_var)
+            call['args'] = [self.data]
             if self.extra_args is not None:
                 call['kws'] = self.extra_args
             #Other loss functions only work for least_squares
@@ -158,7 +161,7 @@ class CompModel(object):
                     call['loss'] = self.loss
 
             #Fit
-            #call.update(kwargs) #additional kwargs
+            call.update(kwargs) #additional kwargs
             fit = minimize(**call)
 
             if fit.success:
@@ -167,29 +170,47 @@ class CompModel(object):
                         fitted_models.append(fit)
                 else:
                     fitted_models.append(fit)
+            else:
+                warnings.warn("Model did not converge...")
 
-        if not fitted_models:
-            warnings.warn("No successful model fits!!!!")
-        else:
-            #Get the best model
+        if fitted_models:
+            #Make accessible some stats about the best fitting model
             self.best_fit = min(fitted_models, key=attrgetter('chisqr'))
             self.fitted_params = dict(self.best_fit.params.valuesdict())
-            self.preds = self.best_fit.residual + self.data[self.Y_var]
+            self.preds = self.best_fit.residual + self.data[self.outcome_var]
             if corr_type == 'pearson':
-                corrs = pearsonr(self.preds,self.data[self.Y_var])
+                corrs = pearsonr(self.preds,self.data[self.outcome_var])
             elif corr_type == 'spearman':
-                corrs = spearmanr(self.preds,self.data[self.Y_var])
+                corrs = spearmanr(self.preds,self.data[self.outcome_var])
             self.corr = {'r':corrs[0],'p':corrs[1]}
             self.MSE = np.mean(self.best_fit.residual**2)
             self.fitted = True
+        else:
+            warnings.warn("Fit failure no parameters found")
+            #Return nans but with same attributes as a fit model
+            self.fitted_params = self.params_to_fit.copy()
+            for k,v in self.fitted_params.iteritems():
+                self.fitted_params[k] = np.nan
+            self.corr = {'r':np.nan,'p':np.nan}
+            self.best_fit = dict(self.fitted_params)
+            self.best_fit['chisqr'] = np.nan
+            self.best_fit['redchi'] = np.nan
+            self.best_fit['aic'] = np.nan
+            self.best_fit['bic'] = np.nan
+            self.corr['r'] = np.nan
+            self.corr['p'] = np.nan
+            self.best_fit['MSE'] = np.nan
+            self.preds = np.nan
+            self.MSE = np.nan
+            self.fitted = 'Unsuccessful'
 
-
-    def fit_group(self,group_name=None,verbose=False,**kwargs):
+    def fit_group(self,group_name=None,verbose=1,**kwargs):
         """
         Fit a model to each member of 'group_name'.
 
         Args:
             group_name: str, must be a column name that exists in data
+            verbose (int): 0- no printed output; 1- print fit failures only (default); 2- print fit message for each group
 
         """
 
@@ -199,38 +220,55 @@ class CompModel(object):
         assert group_name is not None, "Grouping variable not set!"
         assert group_name in self.data.columns, "Grouping variable not found in data!"
 
-        out = pd.DataFrame(columns=[self.group_var]+ self.params_to_fit.keys()+['chi-square','reduced_chi-square','AIC','BIC','corr_r','corr_p','MSE'])
+        out = pd.DataFrame(columns=[self.group_var]+ self.params_to_fit.keys()+['chi-square','reduced_chi-square','AIC','BIC','corr_r','corr_p','MSE','fitted'])
 
-        print("Fitting model to %s groups..." % self.data[group_name].nunique())
+        if verbose == 2:
+            print("Fitting model to %s groups..." % self.data[group_name].nunique())
 
         for i,group in enumerate(self.data[group_name].unique()):
-            if verbose:
-                print('Fitting group %s' % i)
+            if verbose == 2:
+                print('Fitting group %s' % group)
             group_model = CompModel(
             func = self.func,
             data = self.data.loc[self.data[group_name] == group,:].reset_index(drop=True),
-            Y_var = self.Y_var,
+            outcome_var = self.outcome_var,
             loss = self.loss,
             algorithm = self.algorithm,
             params_to_fit = self.params_to_fit,
             extra_args = self.extra_args,
-            nrep = self.nrep
+            n_starts = self.n_starts
             )
             group_model.fit(**kwargs)
-
-            out_dat = dict(group_model.fitted_params)
-            out_dat['chi-square'] = group_model.best_fit.chisqr
-            out_dat['reduced_chi-square'] = group_model.best_fit.redchi
-            out_dat['AIC'] = group_model.best_fit.aic
-            out_dat['BIC'] = group_model.best_fit.bic
-            out_dat['corr_r'] = group_model.corr['r']
-            out_dat['corr_p'] = group_model.corr['p']
-            out_dat['MSE'] = group_model.corr['p']
-            out_dat[self.group_var] = group
+            if group_model.fitted == 'Unsuccessful':
+                if verbose == 1:
+                    print("Group {} failed to fit".format(group))
+                out_dat = dict(group_model.fitted_params)
+                out_dat['chi-square'] = group_model.best_fit['chisqr']
+                out_dat['reduced_chi-square'] = group_model.best_fit['redchi']
+                out_dat['AIC'] = group_model.best_fit['aic']
+                out_dat['BIC'] = group_model.best_fit['bic']
+                out_dat['corr_r'] = group_model.corr['r']
+                out_dat['corr_p'] = group_model.corr['p']
+                out_dat['MSE'] = group_model.MSE
+                out_dat['fitted'] = group_model.fitted
+                out_dat[self.group_var] = group
+            else:
+                out_dat = dict(group_model.fitted_params)
+                out_dat['chi-square'] = group_model.best_fit.chisqr
+                out_dat['reduced_chi-square'] = group_model.best_fit.redchi
+                out_dat['AIC'] = group_model.best_fit.aic
+                out_dat['BIC'] = group_model.best_fit.bic
+                out_dat['corr_r'] = group_model.corr['r']
+                out_dat['corr_p'] = group_model.corr['p']
+                out_dat['MSE'] = group_model.MSE
+                out_dat['fitted'] = group_model.fitted
+                out_dat[self.group_var] = group
             out = out.append(out_dat,ignore_index=True)
             del group_model
         self.fitted = True
         self.group_fits = out
+        if verbose > 0:
+            print("Fitting complete!")
 
     def summary(self):
         """
@@ -242,7 +280,7 @@ class CompModel(object):
         if self.group_var:
 
             #Compute average fit stats
-            summary = self.group_fit.drop(self.group_var,axis=1).agg({'mean','std'})
+            summary = self.group_fits.drop(self.group_var,axis=1).agg({'mean','std'})
 
             if self.algorithm == 'least_squares':
                 print(
@@ -250,16 +288,18 @@ class CompModel(object):
                 Num groups = %s\n
                 Algorithm  = %s (TRF)\n
                 Loss       = %s\n
+                Successes  = %s\n
                 """
-                % (self.data[self.group_var].nunique(),self.algorithm,self.loss))
+                % (self.data[self.group_var].nunique(),self.algorithm,self.loss,self.group_fits['fitted'].value_counts()[True]))
             else:
                 print(
                 """[[Group Mean Summary]]\n
                     Num groups          = %s\n
                     Algorithm           = %s\n
                     Loss                = %s\n
+                    Successes           = %s\n
                 """
-                % (self.data[self.group_var].nunique(),self.algorithm,self.loss))
+                % (self.data[self.group_var].nunique(),self.algorithm,self.loss,self.group_fits['fitted'].value_counts()[True]))
 
             #Display summary
             return summary
